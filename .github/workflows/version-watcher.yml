@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Daily at 17:35 IST = 12:05 UTC
-    - cron: "5 12 * * *"
+    # Daily at 00:00 IST = 18:30 UTC
+    - cron: "30 18 * * *"
 
 permissions:
   contents: read
-  actions: write   # REQUIRED to trigger other workflows
+  actions: write   # REQUIRED to trigger Sync Nightly
 
 jobs:
   watch:
@@ -30,100 +30,49 @@ jobs:
           sudo apt-get install -y curl grep coreutils
 
       # =================================================
-      # Resolve Stable version
+      # Resolve Nightly APK
       # =================================================
-      - name: Resolve Stable version
+      - name: Resolve Nightly version
         run: |
           set -e
 
-          BASE_URL="https://get.videolan.org/vlc-android/"
+          BASE_URL="https://artifacts.videolan.org/vlc-android/nightly-arm64/"
 
-          STABLE_VERSION=$(curl -s "$BASE_URL" \
-            | grep -oP '(?<=href=")[0-9][^/"]*(?=/")' \
-            | sort -V \
+          APK_NAME=$(curl -s "$BASE_URL" \
+            | grep -o 'VLC-Android-[^"]*\.apk' \
+            | sort \
             | tail -n 1)
 
-          if [ -z "$STABLE_VERSION" ]; then
-            echo "Failed to resolve stable version"
+          if [ -z "$APK_NAME" ]; then
+            echo "Failed to resolve nightly APK"
             exit 1
           fi
 
-          echo "STABLE_VERSION=$STABLE_VERSION" >> "$GITHUB_ENV"
+          echo "NIGHTLY_APK=$APK_NAME" >> "$GITHUB_ENV"
 
       # =================================================
-      # Compare Stable + trigger Sync Stable
+      # Compare Nightly + trigger Sync Nightly
       # =================================================
-      - name: Check Stable
+      - name: Check Nightly
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
 
-          LOCAL=$(cat stable.txt || true)
-          REMOTE="$STABLE_VERSION"
+          LOCAL=$(cat nightly.txt || true)
+          REMOTE="$NIGHTLY_APK"
 
-          echo "Stable local : $LOCAL"
-          echo "Stable remote: $REMOTE"
+          echo "Nightly local : $LOCAL"
+          echo "Nightly remote: $REMOTE"
 
           if [ "$LOCAL" != "$REMOTE" ]; then
-            echo "Stable changed → triggering Sync Stable"
+            echo "Nightly changed → triggering Sync Nightly"
 
             curl -X POST \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
-              https://api.github.com/repos/${{ github.repository }}/actions/workflows/sync-stable.yml/dispatches \
-              -d '{"ref":"main"}'
-
-            echo "Waiting before beta check..."
-            sleep 60
-          else
-            echo "Stable unchanged"
-          fi
-
-      # =================================================
-      # Resolve Beta version
-      # =================================================
-      - name: Resolve Beta version
-        run: |
-          set -e
-
-          BASE_URL="https://get.videolan.org/testing/android/"
-
-          BETA_VERSION=$(curl -s "$BASE_URL" \
-            | grep -oP '(?<=href=")[0-9][^/"]*(?=/")' \
-            | sort -V \
-            | tail -n 1)
-
-          if [ -z "$BETA_VERSION" ]; then
-            echo "Failed to resolve beta version"
-            exit 1
-          fi
-
-          echo "BETA_VERSION=$BETA_VERSION" >> "$GITHUB_ENV"
-
-      # =================================================
-      # Compare Beta + trigger Sync Beta
-      # =================================================
-      - name: Check Beta
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -e
-
-          LOCAL=$(cat beta.txt || true)
-          REMOTE="$BETA_VERSION"
-
-          echo "Beta local : $LOCAL"
-          echo "Beta remote: $REMOTE"
-
-          if [ "$LOCAL" != "$REMOTE" ]; then
-            echo "Beta changed → triggering Sync Beta"
-
-            curl -X POST \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              https://api.github.com/repos/${{ github.repository }}/actions/workflows/sync-beta.yml/dispatches \
+              https://api.github.com/repos/${{ github.repository }}/actions/workflows/sync-nightly.yml/dispatches \
               -d '{"ref":"main"}'
           else
-            echo "Beta unchanged"
+            echo "Nightly unchanged"
           fi
