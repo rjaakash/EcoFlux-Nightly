@@ -24,12 +24,10 @@ jobs:
       # =================================================
       # Release cleanup
       #
-      # Keeps:
-      # - LAST 1 stable
-      # - LAST 1 prerelease
-      # Deletes everything else + tags
+      # - Keeps LAST 10 releases (any type)
+      # - Deletes everything else + tags
       # =================================================
-      - name: Cleanup old releases (keep 1 stable + 1 prerelease)
+      - name: Cleanup old releases (keep last 10)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -38,18 +36,17 @@ jobs:
 
           echo "Fetching releases..."
 
-          gh release list --limit 100 --json tagName,isPrerelease,createdAt \
-            -q '.[] | "\(.tagName)|\(.isPrerelease)|\(.createdAt)"' \
-            | sort -t'|' -k3 -r > releases.txt
+          gh release list --limit 200 --json tagName,createdAt \
+            -q '.[] | "\(.tagName)|\(.createdAt)"' \
+            | sort -t'|' -k2 -r > releases.txt
 
-          KEEP_STABLE=$(grep '|false|' releases.txt | head -n1 | cut -d'|' -f1)
-          KEEP_PRE=$(grep '|true|' releases.txt | head -n1 | cut -d'|' -f1)
+          KEEP=$(head -n 10 releases.txt | cut -d'|' -f1)
 
-          echo "Keeping stable    : $KEEP_STABLE"
-          echo "Keeping prerelease: $KEEP_PRE"
+          echo "Keeping these tags:"
+          echo "$KEEP"
 
-          cat releases.txt | while IFS='|' read -r TAG PRE DATE; do
-            if [ "$TAG" != "$KEEP_STABLE" ] && [ "$TAG" != "$KEEP_PRE" ]; then
+          cat releases.txt | while IFS='|' read -r TAG DATE; do
+            if ! echo "$KEEP" | grep -qx "$TAG"; then
               echo "Deleting release + tag: $TAG"
               gh release delete "$TAG" --yes || true
               git push origin ":refs/tags/$TAG" || true
