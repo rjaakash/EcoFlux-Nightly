@@ -24,10 +24,11 @@ jobs:
       # =================================================
       # Release cleanup
       #
-      # - Keeps LAST 10 releases (any type)
+      # - Fetches 100 releases
+      # - Keeps ONLY latest 1
       # - Deletes everything else + tags
       # =================================================
-      - name: Cleanup old releases (keep last 10)
+      - name: Cleanup old releases (keep last 1)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -36,17 +37,17 @@ jobs:
 
           echo "Fetching releases..."
 
-          gh release list --limit 200 --json tagName,createdAt \
+          gh release list --limit 100 --json tagName,createdAt \
             -q '.[] | "\(.tagName)|\(.createdAt)"' \
             | sort -t'|' -k2 -r > releases.txt
 
-          KEEP=$(head -n 10 releases.txt | cut -d'|' -f1)
+          KEEP=$(head -n 1 releases.txt | cut -d'|' -f1)
 
-          echo "Keeping these tags:"
+          echo "Keeping tag:"
           echo "$KEEP"
 
           cat releases.txt | while IFS='|' read -r TAG DATE; do
-            if ! echo "$KEEP" | grep -qx "$TAG"; then
+            if [ "$TAG" != "$KEEP" ]; then
               echo "Deleting release + tag: $TAG"
               gh release delete "$TAG" --yes || true
               git push origin ":refs/tags/$TAG" || true
@@ -56,7 +57,8 @@ jobs:
       # =================================================
       # Workflow runs cleanup
       #
-      # Keeps ONLY latest 100 runs
+      # - Fetches 300 runs
+      # - Keeps ONLY latest 100
       # =================================================
       - name: Cleanup old workflow runs (keep 100)
         env:
