@@ -1,0 +1,75 @@
+name: Repository Maintenance Cleanup
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      # =================================================
+      # Checkout repository
+      # =================================================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # =================================================
+      # Release cleanup
+      #
+      # Keeps:
+      # - LAST 1 stable
+      # - LAST 1 prerelease
+      # Deletes everything else + tags
+      # =================================================
+      - name: Cleanup old releases (keep 1 stable + 1 prerelease)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          export GH_TOKEN=$GH_TOKEN
+
+          echo "Fetching releases..."
+
+          gh release list --limit 100 --json tagName,isPrerelease,createdAt \
+            -q '.[] | "\(.tagName)|\(.isPrerelease)|\(.createdAt)"' \
+            | sort -t'|' -k3 -r > releases.txt
+
+          KEEP_STABLE=$(grep '|false|' releases.txt | head -n1 | cut -d'|' -f1)
+          KEEP_PRE=$(grep '|true|' releases.txt | head -n1 | cut -d'|' -f1)
+
+          echo "Keeping stable    : $KEEP_STABLE"
+          echo "Keeping prerelease: $KEEP_PRE"
+
+          cat releases.txt | while IFS='|' read -r TAG PRE DATE; do
+            if [ "$TAG" != "$KEEP_STABLE" ] && [ "$TAG" != "$KEEP_PRE" ]; then
+              echo "Deleting release + tag: $TAG"
+              gh release delete "$TAG" --yes || true
+              git push origin ":refs/tags/$TAG" || true
+            fi
+          done
+
+      # =================================================
+      # Workflow runs cleanup
+      #
+      # Keeps ONLY latest 100 runs
+      # =================================================
+      - name: Cleanup old workflow runs (keep 100)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          export GH_TOKEN=$GH_TOKEN
+
+          gh run list -L300 --json databaseId \
+            -q '.[].databaseId' \
+          | tail -n +101 \
+          | xargs -r -I ID gh api \
+            repos/$GITHUB_REPOSITORY/actions/runs/ID \
+            -X DELETE

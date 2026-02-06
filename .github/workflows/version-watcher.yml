@@ -1,0 +1,129 @@
+name: Version Watcher
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    # Daily at 17:35 IST = 12:05 UTC
+    - cron: "5 12 * * *"
+
+permissions:
+  contents: read
+  actions: write   # REQUIRED to trigger other workflows
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+
+    steps:
+      # -------------------------------------------------
+      # Checkout
+      # -------------------------------------------------
+      - uses: actions/checkout@v4
+
+      # -------------------------------------------------
+      # Tools
+      # -------------------------------------------------
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl grep coreutils
+
+      # =================================================
+      # Resolve Stable version
+      # =================================================
+      - name: Resolve Stable version
+        run: |
+          set -e
+
+          BASE_URL="https://get.videolan.org/vlc-android/"
+
+          STABLE_VERSION=$(curl -s "$BASE_URL" \
+            | grep -oP '(?<=href=")[0-9][^/"]*(?=/")' \
+            | sort -V \
+            | tail -n 1)
+
+          if [ -z "$STABLE_VERSION" ]; then
+            echo "Failed to resolve stable version"
+            exit 1
+          fi
+
+          echo "STABLE_VERSION=$STABLE_VERSION" >> "$GITHUB_ENV"
+
+      # =================================================
+      # Compare Stable + trigger Sync Stable
+      # =================================================
+      - name: Check Stable
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+
+          LOCAL=$(cat stable.txt || true)
+          REMOTE="$STABLE_VERSION"
+
+          echo "Stable local : $LOCAL"
+          echo "Stable remote: $REMOTE"
+
+          if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "Stable changed → triggering Sync Stable"
+
+            curl -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/${{ github.repository }}/actions/workflows/sync-stable.yml/dispatches \
+              -d '{"ref":"main"}'
+
+            echo "Waiting before beta check..."
+            sleep 60
+          else
+            echo "Stable unchanged"
+          fi
+
+      # =================================================
+      # Resolve Beta version
+      # =================================================
+      - name: Resolve Beta version
+        run: |
+          set -e
+
+          BASE_URL="https://get.videolan.org/testing/android/"
+
+          BETA_VERSION=$(curl -s "$BASE_URL" \
+            | grep -oP '(?<=href=")[0-9][^/"]*(?=/")' \
+            | sort -V \
+            | tail -n 1)
+
+          if [ -z "$BETA_VERSION" ]; then
+            echo "Failed to resolve beta version"
+            exit 1
+          fi
+
+          echo "BETA_VERSION=$BETA_VERSION" >> "$GITHUB_ENV"
+
+      # =================================================
+      # Compare Beta + trigger Sync Beta
+      # =================================================
+      - name: Check Beta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+
+          LOCAL=$(cat beta.txt || true)
+          REMOTE="$BETA_VERSION"
+
+          echo "Beta local : $LOCAL"
+          echo "Beta remote: $REMOTE"
+
+          if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "Beta changed → triggering Sync Beta"
+
+            curl -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/${{ github.repository }}/actions/workflows/sync-beta.yml/dispatches \
+              -d '{"ref":"main"}'
+          else
+            echo "Beta unchanged"
+          fi

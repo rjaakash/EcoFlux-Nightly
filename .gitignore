@@ -1,0 +1,13 @@
+# Temporary download directory (APKs)
+tmp/
+
+# Generated changelog + news files
+NEWS.txt
+CHANGELOG.txt
+
+# Editor / OS junk
+*~
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
