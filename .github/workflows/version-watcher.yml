@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Daily at 00:00 IST = 18:30 UTC
-    - cron: "30 18 * * *"
+    # Daily at 02:00 UTC
+    - cron: "0 2 * * *"
 
 permissions:
   contents: read
